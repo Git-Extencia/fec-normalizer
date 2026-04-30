@@ -39,7 +39,7 @@ services:
       - "traefik.http.routers.fec.rule=Host(`fec.srv1269986.hstgr.cloud`)"  # [À AJUSTER si autre domaine]
       - "traefik.http.routers.fec.entrypoints=websecure"
       - "traefik.http.routers.fec.tls=true"
-      - "traefik.http.routers.fec.tls.certresolver=letsencrypt"  # [À AJUSTER selon le nom dans le compose n8n]
+      - "traefik.http.routers.fec.tls.certresolver=mytlschallenge"  # Aligné sur le resolver utilisé par n8n-traefik
 
       # Service interne — port 8501 dans le container
       - "traefik.http.services.fec.loadbalancer.server.port=8501"
