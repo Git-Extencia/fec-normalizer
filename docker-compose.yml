@@ -20,6 +20,7 @@ services:
       context: .
       dockerfile: Dockerfile
     image: fec-normalizer:latest
+    pull_policy: build  # Force le build local au lieu de tenter un pull Docker Hub
     container_name: fec-normalizer
     restart: unless-stopped
 
