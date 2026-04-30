@@ -1,0 +1,64 @@
+# =============================================================================
+# Compose Docker — Déploiement de l'app web FEC Normalizer
+#
+# Ce projet doit être déployé À CÔTÉ du projet n8n existant sur le VPS Hostinger.
+# Il rejoint le network Traefik du projet n8n pour bénéficier du reverse proxy
+# et du HTTPS automatique déjà configurés.
+#
+# À ajuster avant déploiement (lignes commentées « # [À AJUSTER] ») :
+#   1. Le nom du network externe (probablement n8n_default — à confirmer
+#      via `docker network ls` sur le VPS).
+#   2. Le sous-domaine (par défaut fec.srv1269986.hstgr.cloud — à modifier
+#      si tu veux fec.extencia.fr ou autre).
+#   3. Le nom du resolver TLS (souvent letsencrypt ou myresolver — à confirmer
+#      en regardant le docker-compose du projet n8n existant).
+# =============================================================================
+
+services:
+  fec-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: fec-normalizer:latest
+    container_name: fec-normalizer
+    restart: unless-stopped
+
+    # Aucun port exposé directement — Traefik prend le relais via le network
+    expose:
+      - "8501"
+
+    networks:
+      - traefik_network
+
+    labels:
+      # Active la prise en charge par Traefik
+      - "traefik.enable=true"
+
+      # Routeur HTTPS principal
+      - "traefik.http.routers.fec.rule=Host(`fec.srv1269986.hstgr.cloud`)"  # [À AJUSTER si autre domaine]
+      - "traefik.http.routers.fec.entrypoints=websecure"
+      - "traefik.http.routers.fec.tls=true"
+      - "traefik.http.routers.fec.tls.certresolver=letsencrypt"  # [À AJUSTER selon le nom dans le compose n8n]
+
+      # Service interne — port 8501 dans le container
+      - "traefik.http.services.fec.loadbalancer.server.port=8501"
+
+      # Redirection automatique HTTP -> HTTPS
+      - "traefik.http.routers.fec-http.rule=Host(`fec.srv1269986.hstgr.cloud`)"  # [À AJUSTER]
+      - "traefik.http.routers.fec-http.entrypoints=web"
+      - "traefik.http.routers.fec-http.middlewares=fec-https-redirect"
+      - "traefik.http.middlewares.fec-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.fec-https-redirect.redirectscheme.permanent=true"
+
+    # Limites raisonnables pour ne pas saturer le VPS
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: "1.5"
+
+# Network externe — celui du projet n8n où vit Traefik
+networks:
+  traefik_network:
+    external: true
+    name: n8n_default  # [À AJUSTER selon `docker network ls` sur le VPS]

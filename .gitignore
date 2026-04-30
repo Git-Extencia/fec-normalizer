@@ -1,0 +1,57 @@
+# Environnement virtuel Python
+.venv/
+venv/
+env/
+
+# Cache Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ----------------------------------------------------------------------------
+# CRITIQUE — ne JAMAIS pousser de données client sur GitHub.
+# Cette section couvre tous les fichiers FEC réels ou enrichis.
+# ----------------------------------------------------------------------------
+
+# Fichiers FEC bruts (clients réels OU synthétiques de test)
+*.txt
+!CHECKLIST_pilote_Bordeaux.txt
+fec_*.txt
+fec_*.csv
+
+# Sorties enrichies et diagnostics (peuvent contenir des dérivés client)
+*_enrichi.xlsx
+*_enrichi.parquet
+*_diagnostic.xlsx
+*_diagnostic.json
+fec_enrichi.*
+diagnostic_fec.*
+
+# Dossiers de tests temporaires
+audit_test/
+resultats_test/
+out_*/
+
+# Archives projet (peuvent contenir des références historiques sensibles)
+archives/
+
+# ----------------------------------------------------------------------------
+# Documents Word/PDF (livrables locaux, pas du code)
+# ----------------------------------------------------------------------------
+*.docx
+*.pdf
+
+# Variables d'environnement (secrets éventuels — jamais dans Git)
+.env
+.env.local
+*.secret

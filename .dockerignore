@@ -1,0 +1,43 @@
+# Environnement virtuel Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Outils dev
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Git et IDE
+.git/
+.gitignore
+.vscode/
+.idea/
+.DS_Store
+
+# Données de test (jamais embarquées dans l'image)
+fec_*.txt
+fec_*.csv
+fec_*.xlsx
+fec_*.parquet
+*_diagnostic.json
+*_diagnostic.xlsx
+*_enrichi.xlsx
+*_enrichi.parquet
+
+# Dossiers de tests temporaires
+audit_test/
+resultats_test/
+archives/
+
+# Documents projet (pas embarqués dans l'image)
+*.docx
+*.md
+!README.md
+
+# Exécutables et scripts annexes non utilisés par l'app web
+cli.py
+generer_fec_test.py
+tests_pipeline.py
