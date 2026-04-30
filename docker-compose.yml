@@ -29,7 +29,7 @@ services:
       - "8501"
 
     networks:
-      - traefik_network
+      - n8n_default
 
     labels:
       # Active la prise en charge par Traefik
@@ -59,7 +59,7 @@ services:
           cpus: "1.5"
 
 # Network externe — celui du projet n8n où vit Traefik
+# (vérifié via `docker network ls` sur le VPS Hostinger)
 networks:
-  traefik_network:
+  n8n_default:
     external: true
-    name: n8n_default  # [À AJUSTER selon `docker network ls` sur le VPS]
