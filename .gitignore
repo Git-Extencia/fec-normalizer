@@ -24,10 +24,12 @@ Thumbs.db
 # ----------------------------------------------------------------------------
 
 # Fichiers FEC bruts (clients réels OU synthétiques de test)
-*.txt
-!CHECKLIST_pilote_Bordeaux.txt
+# On cible uniquement les FEC, pas tous les .txt (sinon requirements.txt serait exclu)
 fec_*.txt
 fec_*.csv
+*FEC*.txt
+*FEC*.csv
+[0-9]*.txt
 
 # Sorties enrichies et diagnostics (peuvent contenir des dérivés client)
 *_enrichi.xlsx
