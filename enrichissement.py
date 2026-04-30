@@ -81,6 +81,13 @@ def enrichir(
           .then(compte.str.slice(0, 2))
           .otherwise(pl.lit("??"))
           .alias("Sous_Racine"),
+        # Racine niveau 3 = compte général PCG (401, 411, 607, 627, 707…)
+        # C'est le grain le plus utilisé en analyse audit et indispensable
+        # pour les benchmarks sectoriels de la phase 2 (Infocentre).
+        pl.when(compte.str.len_chars() >= 3)
+          .then(compte.str.slice(0, 3))
+          .otherwise(pl.lit("???"))
+          .alias("Racine_3"),
     ])
 
     # Découpages temporels
@@ -151,7 +158,7 @@ def reorganiser_colonnes(df: pl.DataFrame) -> pl.DataFrame:
     """
     colonnes_priorite = [
         "Entite", "Exercice",
-        "Racine", "ClasseLib", "Sous_Racine",
+        "Racine", "ClasseLib", "Sous_Racine", "Racine_3",
         "Annee", "Trimestre", "Mois",
         "JournalCode", "JournalLib",
         "EcritureNum", "EcritureDate",
