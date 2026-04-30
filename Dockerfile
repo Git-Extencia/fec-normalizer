@@ -33,12 +33,16 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Configuration Streamlit pour usage en container derrière reverse proxy
+# Configuration Streamlit pour usage en container derrière reverse proxy.
+# XSRF et CORS désactivés pour permettre le bon fonctionnement des
+# WebSockets via Traefik (sinon le frontend reste bloqué sur le skeleton
+# de chargement). Pas un risque de sécurité dans notre cas : URL non
+# publique, infrastructure Extencia interne.
 ENV STREAMLIT_SERVER_HEADLESS=true \
     STREAMLIT_SERVER_PORT=8501 \
     STREAMLIT_SERVER_ADDRESS=0.0.0.0 \
     STREAMLIT_BROWSER_GATHER_USAGE_STATS=false \
-    STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION=true \
+    STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION=false \
     STREAMLIT_SERVER_ENABLE_CORS=false \
     STREAMLIT_SERVER_MAX_UPLOAD_SIZE=500
 
