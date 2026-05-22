@@ -462,18 +462,33 @@ with col_b:
 # Libellés en mode multi-FEC
 libelles: list[str] = []
 if uploaded_files and len(uploaded_files) > 1:
-    st.markdown("##### Libellés associés à chaque FEC")
-    st.caption("Modifiez si l'auto-détection ne convient pas.")
-    nb_cols = min(len(uploaded_files), 4)
+    colonne_cible = "Exercice" if mode_cumul == "exercice" else "Entite"
+    placeholder_exemple = (
+        "ex. 2024, Exercice 2024…" if mode_cumul == "exercice"
+        else "ex. Carrefour Bordeaux, SOC_ALPHA…"
+    )
+
+    st.markdown(f"##### Libellés associés à chaque FEC")
+    st.caption(
+        f"Chaque libellé apparaîtra dans la colonne **{colonne_cible}** "
+        f"du fichier enrichi. La saisie est obligatoire : c'est vous qui "
+        f"décidez du libellé propre, pas le nom de fichier source."
+    )
+    nb_cols = min(len(uploaded_files), 3)
     cols = st.columns(nb_cols)
     for i, f in enumerate(uploaded_files):
-        defaut = _deduire_libelle_annee(f.name, i)
         with cols[i % nb_cols]:
+            # On rappelle le nom du fichier d'origine au-dessus du champ
+            # pour que l'auditeur sache exactement à quel fichier le libellé
+            # se rapporte (évite toute confusion d'ordre).
+            st.caption(f"📄 `{f.name}`")
             libelles.append(
                 st.text_input(
-                    f"Fichier {i + 1}",
-                    value=defaut,
+                    "Libellé",
+                    value="",
+                    placeholder=placeholder_exemple,
                     key=f"lib_{i}",
+                    label_visibility="collapsed",
                 )
             )
 
@@ -484,12 +499,23 @@ if uploaded_files and len(uploaded_files) > 1:
 
 _section_titre(3, "Traitement")
 
+# En mode multi-FEC, on bloque le bouton tant que tous les libellés ne sont
+# pas remplis. Décision UX : on force l'auditeur à choisir un libellé propre
+# au lieu de laisser un défaut moche issu du nom de fichier.
+multi_fec = uploaded_files and len(uploaded_files) > 1
+libelles_manquants = multi_fec and any(not lib.strip() for lib in libelles)
+
 bouton_lance = st.button(
     "🚀  Lancer le traitement",
-    disabled=not uploaded_files,
+    disabled=(not uploaded_files) or libelles_manquants,
     type="primary",
     use_container_width=True,
 )
+
+if libelles_manquants:
+    st.caption(
+        "⚠️ Renseignez un libellé pour chaque FEC avant de lancer le traitement."
+    )
 
 
 # Initialisation du conteneur de résultats persistant en session
