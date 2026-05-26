@@ -32,6 +32,8 @@ from parser_fec import (
     lire_fec,
     creer_rapport_diagnostic,
     calculer_hash_sha256,
+    deduire_siren_depuis_nom,
+    chercher_raison_sociale,
 )
 from enrichissement import (
     enrichir,
@@ -48,7 +50,7 @@ from export import (
 )
 
 
-VERSION = "1.1"
+VERSION = "1.2"
 COLONNES_CRITIQUES = ("CompteNum", "EcritureDate", "Debit", "Credit")
 RACINE_PROJET = Path(__file__).parent
 # Logo blanc adapté au header bleu marine (charte Extencia : version sombre)
@@ -377,6 +379,28 @@ def _calculer_resultat_safe(df) -> list[dict]:
         return []
 
 
+@st.cache_data(show_spinner=False, ttl=3600)
+def _raison_sociale_depuis_fichier(nom_fichier: str) -> str:
+    """
+    Pré-remplissage du champ « Société » à partir du nom de fichier FEC.
+
+    Étapes :
+    1. Extraire le SIREN (9 premiers chiffres du nom) via deduire_siren_depuis_nom().
+    2. Appeler l'API publique recherche-entreprises (timeout 3s).
+    3. Si tout échoue, retourner "" — l'auditeur saisira à la main.
+
+    Le résultat est mis en cache 1h pour éviter de spammer l'API si l'auditeur
+    re-dépose le même fichier ou navigue dans la page.
+
+    Retour str (jamais None) pour usage direct comme `value=` d'un text_input.
+    """
+    siren = deduire_siren_depuis_nom(nom_fichier)
+    if not siren:
+        return ""
+    raison = chercher_raison_sociale(siren)
+    return raison or ""
+
+
 def _format_euros(montant: float) -> str:
     """Formate un montant en euros, style français avec séparateurs."""
     signe = "+" if montant >= 0 else "−"
@@ -477,10 +501,15 @@ with col_b:
     # quand même tracer la société en colonne Entite (utile pour le futur
     # cumul avec d'autres FEC).
     if uploaded_files and len(uploaded_files) == 1:
+        # Pré-remplissage auto depuis l'API recherche-entreprises (SIREN
+        # extrait du nom de fichier). Échec silencieux = champ vide.
+        raison_auto = _raison_sociale_depuis_fichier(uploaded_files[0].name)
         entite_unique = st.text_input(
             "Société (optionnel)",
+            value=raison_auto,
             placeholder="ex. Carrefour Bordeaux",
-            help="Si renseigné, ajoute une colonne Entite avec cette valeur.",
+            help="Auto-rempli depuis le SIREN détecté dans le nom de fichier "
+                 "(API publique recherche-entreprises). Modifiable.",
         )
     else:
         entite_unique = ""
@@ -496,21 +525,26 @@ if uploaded_files and len(uploaded_files) > 1:
 
     st.markdown(f"##### Libellés associés à chaque FEC")
     st.caption(
-        "Renseignez la **société** pour chaque FEC. L'**exercice** est "
-        "auto-détecté depuis le nom de fichier (format DGFiP normé). "
-        "Vous pouvez l'ajuster si nécessaire."
+        "**Société** et **exercice** sont pré-remplis automatiquement à partir "
+        "du nom de fichier (SIREN → API recherche-entreprises pour la société, "
+        "date de clôture pour l'exercice). Vous pouvez ajuster si nécessaire."
     )
     for i, f in enumerate(uploaded_files):
         # Affichage : 1 ligne par FEC avec [nom du fichier] | [Société] | [Exercice]
         st.caption(f"📄 `{f.name}`")
         col_soc, col_ex = st.columns([2, 1])
         with col_soc:
+            raison_auto = _raison_sociale_depuis_fichier(f.name)
             societes.append(
                 st.text_input(
                     "Société",
-                    value="",
+                    value=raison_auto,
                     placeholder="ex. Carrefour Bordeaux",
                     key=f"soc_{i}",
+                    help="Auto-rempli depuis l'API recherche-entreprises "
+                         "si le nom de fichier commence par un SIREN valide."
+                    if raison_auto
+                    else "Saisie manuelle (SIREN non détecté ou API indisponible).",
                 )
             )
         with col_ex:

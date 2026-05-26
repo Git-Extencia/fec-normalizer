@@ -196,6 +196,101 @@ def deduire_exercice_depuis_nom(nom_fichier: str) -> str | None:
     return f"{mois}/{annee}"
 
 
+def deduire_siren_depuis_nom(nom_fichier: str) -> str | None:
+    """
+    Extrait le SIREN d'un nom de fichier FEC selon la convention DGFiP :
+        <SIREN sur 9 chiffres><texte libre éventuel>FEC<AAAAMMJJ>.txt
+
+    Retourne le SIREN (9 chiffres) ou None si le nom ne commence pas par
+    9 chiffres consécutifs.
+
+    Notes :
+    - Pas de validation par clé de Luhn ici. Le SIREN sera ensuite confronté
+      à l'API recherche-entreprises qui rejettera de toute façon les SIREN
+      inexistants.
+    - Le préfixe "0" est conservé (un SIREN peut commencer par 0 même si
+      c'est rare).
+
+    Args:
+        nom_fichier: Nom du fichier FEC (avec ou sans extension).
+
+    Returns:
+        SIREN sur 9 chiffres (str) ou None si non détectable.
+    """
+    stem = Path(nom_fichier).stem
+    match = re.match(r"^(\d{9})", stem)
+    if not match:
+        return None
+    return match.group(1)
+
+
+def chercher_raison_sociale(siren: str, timeout: float = 3.0) -> str | None:
+    """
+    Interroge l'API publique recherche-entreprises (API Gouv) pour obtenir
+    la raison sociale officielle d'une entreprise à partir de son SIREN.
+
+    Pourquoi cette API plutôt que Sirene-INSEE :
+    - Pas de clé API requise (Sirene exige une inscription)
+    - Données rafraîchies quotidiennement à partir de Sirene
+    - Format JSON propre avec `nom_complet` toujours présent
+
+    Tolérance aux pannes : en cas de timeout, d'erreur réseau, d'API down
+    ou de résultat vide, on retourne None. Côté UI, l'auditeur sera invité
+    à saisir manuellement le nom — comme c'est déjà le cas pour l'exercice
+    quand l'auto-détection échoue.
+
+    Confidentialité : seul le SIREN sort du serveur. Le SIREN est une donnée
+    publique (publié au BODACC), donc pas une fuite au sens RGPD. Aucun
+    contenu du FEC n'est transmis.
+
+    Args:
+        siren: Numéro SIREN à 9 chiffres.
+        timeout: Délai maximum d'attente en secondes (défaut : 3.0).
+
+    Returns:
+        Raison sociale (str) ou None si non trouvée / API indisponible.
+    """
+    if not siren or not siren.isdigit() or len(siren) != 9:
+        return None
+
+    try:
+        import json
+        import urllib.parse
+        import urllib.request
+
+        url = (
+            "https://recherche-entreprises.api.gouv.fr/search"
+            f"?q={urllib.parse.quote(siren)}&page=1&per_page=1"
+        )
+        req = urllib.request.Request(
+            url,
+            headers={"Accept": "application/json", "User-Agent": "FEC-Normalizer/1.1"},
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+
+        results = data.get("results", [])
+        if not results:
+            return None
+
+        entreprise = results[0]
+        # Vérifie que c'est bien le bon SIREN (l'API peut faire du fuzzy match)
+        if entreprise.get("siren") != siren:
+            return None
+
+        # nom_complet est le champ standard ; fallback sur nom_raison_sociale
+        return (
+            entreprise.get("nom_complet")
+            or entreprise.get("nom_raison_sociale")
+            or None
+        )
+    except Exception:
+        # Volontairement large : timeout, erreur DNS, JSON mal formé, etc.
+        # On préfère un échec silencieux qui laisse l'auditeur saisir à la
+        # main plutôt qu'une exception qui plante l'UI.
+        return None
+
+
 def calculer_hash_sha256(chemin: Path, taille_buffer: int = 65536) -> str:
     """
     Calcule la signature SHA-256 d'un fichier, lu par chunks pour rester
