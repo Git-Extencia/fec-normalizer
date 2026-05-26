@@ -33,7 +33,13 @@ from parser_fec import (
     creer_rapport_diagnostic,
     calculer_hash_sha256,
 )
-from enrichissement import enrichir, cumuler_fec, reorganiser_colonnes
+from enrichissement import (
+    enrichir,
+    cumuler_fec,
+    concatener_fec_enrichis,
+    reorganiser_colonnes,
+    calculer_resultat_par_groupe,
+)
 from export import (
     exporter,
     exporter_rapport_diagnostic,
@@ -359,6 +365,29 @@ def _horodatage() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def _calculer_resultat_safe(df) -> list[dict]:
+    """
+    Calcule le résultat par groupe et retourne une liste de dicts sérialisables.
+    Renvoie une liste vide si le calcul plante (ex. pas de classes 6/7 dans le FEC).
+    """
+    try:
+        df_res = calculer_resultat_par_groupe(df)
+        return df_res.to_dicts()
+    except Exception:
+        return []
+
+
+def _format_euros(montant: float) -> str:
+    """Formate un montant en euros, style français avec séparateurs."""
+    signe = "+" if montant >= 0 else "−"
+    abs_val = abs(montant)
+    if abs_val >= 1_000_000:
+        return f"{signe}{abs_val / 1_000_000:.2f} M€"
+    if abs_val >= 1_000:
+        return f"{signe}{abs_val:,.0f} €".replace(",", " ")
+    return f"{signe}{abs_val:.2f} €"
+
+
 # ---------------------------------------------------------------------------
 # En-tête avec logo
 # ---------------------------------------------------------------------------
@@ -444,53 +473,62 @@ with col_a:
     )
 
 with col_b:
-    if uploaded_files and len(uploaded_files) > 1:
-        mode_cumul = st.radio(
-            "Mode de cumul",
-            options=["exercice", "entite"],
-            format_func=lambda x: (
-                "Multi-années (Exercice)" if x == "exercice"
-                else "Multi-sociétés (Entité)"
-            ),
-            horizontal=True,
-            help="Cumul multi-années : analyses pluriannuelles d'un client. "
-                 "Cumul multi-sociétés : dossiers groupes.",
+    # Le champ "entité unique" sert pour le cas mono-FEC où l'auditeur veut
+    # quand même tracer la société en colonne Entite (utile pour le futur
+    # cumul avec d'autres FEC).
+    if uploaded_files and len(uploaded_files) == 1:
+        entite_unique = st.text_input(
+            "Société (optionnel)",
+            placeholder="ex. Carrefour Bordeaux",
+            help="Si renseigné, ajoute une colonne Entite avec cette valeur.",
         )
     else:
-        mode_cumul = None
+        entite_unique = ""
 
-# Libellés en mode multi-FEC
-libelles: list[str] = []
+# Libellés en mode multi-FEC : société (saisie) + exercice (auto-détecté,
+# modifiable). Mode unifié — plus de choix « exercice OU entité », on saisit
+# toujours les deux dimensions et le fichier enrichi a toujours les deux
+# colonnes Entite et Exercice.
+societes: list[str] = []
+exercices: list[str] = []
 if uploaded_files and len(uploaded_files) > 1:
-    colonne_cible = "Exercice" if mode_cumul == "exercice" else "Entite"
-    placeholder_exemple = (
-        "ex. 2024, Exercice 2024…" if mode_cumul == "exercice"
-        else "ex. Carrefour Bordeaux, SOC_ALPHA…"
-    )
+    from parser_fec import deduire_exercice_depuis_nom
 
     st.markdown(f"##### Libellés associés à chaque FEC")
     st.caption(
-        f"Chaque libellé apparaîtra dans la colonne **{colonne_cible}** "
-        f"du fichier enrichi. La saisie est obligatoire : c'est vous qui "
-        f"décidez du libellé propre, pas le nom de fichier source."
+        "Renseignez la **société** pour chaque FEC. L'**exercice** est "
+        "auto-détecté depuis le nom de fichier (format DGFiP normé). "
+        "Vous pouvez l'ajuster si nécessaire."
     )
-    nb_cols = min(len(uploaded_files), 3)
-    cols = st.columns(nb_cols)
     for i, f in enumerate(uploaded_files):
-        with cols[i % nb_cols]:
-            # On rappelle le nom du fichier d'origine au-dessus du champ
-            # pour que l'auditeur sache exactement à quel fichier le libellé
-            # se rapporte (évite toute confusion d'ordre).
-            st.caption(f"📄 `{f.name}`")
-            libelles.append(
+        # Affichage : 1 ligne par FEC avec [nom du fichier] | [Société] | [Exercice]
+        st.caption(f"📄 `{f.name}`")
+        col_soc, col_ex = st.columns([2, 1])
+        with col_soc:
+            societes.append(
                 st.text_input(
-                    "Libellé",
+                    "Société",
                     value="",
-                    placeholder=placeholder_exemple,
-                    key=f"lib_{i}",
-                    label_visibility="collapsed",
+                    placeholder="ex. Carrefour Bordeaux",
+                    key=f"soc_{i}",
                 )
             )
+        with col_ex:
+            exercice_auto = deduire_exercice_depuis_nom(f.name) or ""
+            exercices.append(
+                st.text_input(
+                    "Exercice",
+                    value=exercice_auto,
+                    placeholder="ex. 2025",
+                    key=f"ex_{i}",
+                    help="Auto-détecté si le nom suit la convention DGFiP. "
+                         "Format : « 2025 » pour exercice civil, « MM/AAAA » sinon.",
+                )
+            )
+        st.markdown(
+            "<div style='margin-bottom: 8px;'></div>",
+            unsafe_allow_html=True,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -499,11 +537,12 @@ if uploaded_files and len(uploaded_files) > 1:
 
 _section_titre(3, "Traitement")
 
-# En mode multi-FEC, on bloque le bouton tant que tous les libellés ne sont
-# pas remplis. Décision UX : on force l'auditeur à choisir un libellé propre
-# au lieu de laisser un défaut moche issu du nom de fichier.
+# En mode multi-FEC, on bloque le bouton tant que toutes les sociétés ne
+# sont pas remplies (l'exercice étant auto-détecté, il est rarement vide).
 multi_fec = uploaded_files and len(uploaded_files) > 1
-libelles_manquants = multi_fec and any(not lib.strip() for lib in libelles)
+societes_manquantes = multi_fec and any(not s.strip() for s in societes)
+exercices_manquants = multi_fec and any(not e.strip() for e in exercices)
+libelles_manquants = societes_manquantes or exercices_manquants
 
 # Placeholder qui sera remplacé par un bandeau "traitement en cours"
 # dès que l'utilisateur clique sur le bouton — pour bien marquer
@@ -519,9 +558,14 @@ bouton_lance = bouton_placeholder.button(
 )
 
 if libelles_manquants:
-    st.caption(
-        "⚠️ Renseignez un libellé pour chaque FEC avant de lancer le traitement."
-    )
+    if societes_manquantes:
+        st.caption(
+            "⚠️ Renseignez la **société** pour chaque FEC avant de lancer."
+        )
+    elif exercices_manquants:
+        st.caption(
+            "⚠️ Renseignez l'**exercice** pour chaque FEC (auto-détection a échoué)."
+        )
 
 
 # Initialisation du conteneur de résultats persistant en session
@@ -584,12 +628,20 @@ if bouton_lance and uploaded_files:
             progress_bar.progress(20, text="Lecture du/des FEC…")
             st.write("📥 **Lecture du/des FEC**")
             t0 = time.perf_counter()
+            # On stocke (chemin, société, exercice, df) pour chaque FEC.
+            # Pour le mono-FEC, société/exercice peuvent venir du seul champ
+            # « entite_unique » saisi par l'auditeur (optionnel).
             dfs: list[tuple] = []
             erreur_critique = None
 
-            for chemin, libelle in zip(
-                chemins_locaux, libelles or [None] * len(chemins_locaux)
-            ):
+            if multi:
+                meta_par_fec = list(zip(chemins_locaux, societes, exercices))
+            else:
+                meta_par_fec = [
+                    (chemins_locaux[0], entite_unique or None, None)
+                ]
+
+            for chemin, soc, exo in meta_par_fec:
                 df_local, manquantes = _lire_et_valider(chemin)
                 if manquantes:
                     erreur_critique = (
@@ -599,7 +651,7 @@ if bouton_lance and uploaded_files:
                         f"Vérifiez l'export depuis le logiciel comptable."
                     )
                     break
-                dfs.append((chemin, libelle, df_local))
+                dfs.append((chemin, soc, exo, df_local))
 
             if erreur_critique:
                 st.error(erreur_critique)
@@ -607,7 +659,7 @@ if bouton_lance and uploaded_files:
                 st.stop()
 
             duree_lecture = time.perf_counter() - t0
-            total_lignes = sum(d.height for _, _, d in dfs)
+            total_lignes = sum(d.height for _, _, _, d in dfs)
             st.write(
                 f"  ✓ {total_lignes:,} lignes en {duree_lecture:.2f} s"
                 .replace(",", " ")
@@ -622,25 +674,35 @@ if bouton_lance and uploaded_files:
             progress_bar.progress(40, text="Enrichissement des colonnes…")
             st.write("🔧 **Enrichissement des colonnes de travail**")
             t0 = time.perf_counter()
+
+            from enrichissement import concatener_fec_enrichis
+
+            dfs_enrichis: list = []
+            for chemin, soc, exo, df_local in dfs:
+                df_enrichi = enrichir(
+                    df_local,
+                    entite=soc or None,
+                    exercice=exo or None,
+                )
+                dfs_enrichis.append(df_enrichi)
+
             if multi:
-                colonne = "Exercice" if mode_cumul == "exercice" else "Entite"
-                kwarg = "exercice" if mode_cumul == "exercice" else "entite"
-                dfs_enrichis: dict = {}
-                for _, libelle, df_local in dfs:
-                    dfs_enrichis[libelle] = enrichir(df_local, **{kwarg: libelle})
-                df_final = cumuler_fec(dfs_enrichis, colonne_libelle=colonne)
+                df_final = concatener_fec_enrichis(dfs_enrichis)
                 df_final = reorganiser_colonnes(df_final)
+                couples = ", ".join(
+                    f"({s or '—'} / {e or '—'})" for _, s, e, _ in dfs
+                )
                 transformations.append({
                     "nom": "cumul_fec",
                     "description": (
-                        f"Cumul de {len(dfs)} FEC sur la colonne '{colonne}' "
-                        f"avec libellés : {', '.join(libelles)}"
+                        f"Cumul de {len(dfs)} FEC enrichis avec leurs colonnes "
+                        f"Entite/Exercice. Couples (Société/Exercice) : {couples}"
                     ),
                     "horodatage": _horodatage(),
                 })
             else:
-                df_final = enrichir(dfs[0][2])
-                df_final = reorganiser_colonnes(df_final)
+                df_final = reorganiser_colonnes(dfs_enrichis[0])
+
             transformations.append({
                 "nom": "enrichissement",
                 "description": "Ajout des colonnes Racine, ClasseLib, Mois, "
@@ -693,25 +755,25 @@ if bouton_lance and uploaded_files:
             rapport["utilisateur"] = initiales if initiales else "non renseigné"
 
             if multi:
-                rapport["mode_cumul"] = mode_cumul
+                rapport["mode_cumul"] = "multi-FEC (société + exercice)"
                 rapport["fichiers_sources_cumules"] = [
                     {
                         "nom": chemin.name,
-                        "libelle": libelle,
+                        "societe": soc,
+                        "exercice": exo,
                         "sha256": calculer_hash_sha256(chemin),
                         "lignes": df_local.height,
                     }
-                    for (chemin, libelle, df_local) in dfs
+                    for (chemin, soc, exo, df_local) in dfs
                 ]
 
             chemin_diag_xlsx = exporter_rapport_diagnostic(
                 [rapport], session_dir / f"{nom_base}_diagnostic"
             )
-            chemin_diag_json = session_dir / f"{nom_base}_diagnostic.json"
-            chemin_diag_json.write_text(
-                json.dumps(rapport, indent=2, ensure_ascii=False, default=str),
-                encoding="utf-8",
-            )
+            # Note : le JSON de diagnostic n'est plus exposé en téléchargement
+            # (décision UX du 26/05/2026, Denis). Le rapport reste disponible
+            # via l'expander « Voir le détail du diagnostic » qui affiche les
+            # mêmes infos en lecture seule.
             st.write(f"  ✓ SHA-256 source : `{rapport['fichier_sha256'][:16]}…`")
             progress_bar.progress(100, text="✅ Terminé")
             status.update(label="✅ Traitement terminé", state="complete")
@@ -722,13 +784,14 @@ if bouton_lance and uploaded_files:
         st.session_state.resultats = {
             "bytes_enrichi": chemin_sortie.read_bytes(),
             "bytes_diag_xlsx": chemin_diag_xlsx.read_bytes(),
-            "bytes_diag_json": chemin_diag_json.read_bytes(),
             "nom_enrichi": chemin_sortie.name,
             "nom_diag_xlsx": chemin_diag_xlsx.name,
-            "nom_diag_json": chemin_diag_json.name,
             "rapport": dict(rapport),
             "nb_lignes": df_final.height,
             "nb_colonnes": df_final.width,
+            # Résultat estimé par groupe (Entite × Exercice) — utile pour le
+            # bloc « Aperçu financier » affiché juste sous les boutons.
+            "resultat_par_groupe": _calculer_resultat_safe(df_final),
         }
 
     finally:
@@ -767,8 +830,71 @@ if st.session_state.resultats:
     col3.metric("Période", f"{periode_min} → {periode_max}")
     col4.metric("Équilibre D/C", f"{rapport['ecart_equilibre']} €")
 
+    # ----- Aperçu financier estimé (résultat par groupe) -----
+    resultat_par_groupe = res.get("resultat_par_groupe") or []
+    if resultat_par_groupe:
+        st.markdown("#### 📊 Aperçu financier estimé")
+        st.caption(
+            "Résultat comptable indicatif calculé sur FEC brut "
+            "(**avant écritures de clôture** : à interpréter avec prudence)."
+        )
+        # On affiche 1 carte par groupe, en colonnes de 2
+        nb_cartes = len(resultat_par_groupe)
+        nb_par_ligne = min(2, nb_cartes)
+        for i in range(0, nb_cartes, nb_par_ligne):
+            cols_cartes = st.columns(nb_par_ligne)
+            for j, ligne in enumerate(resultat_par_groupe[i:i + nb_par_ligne]):
+                resultat = ligne.get("Resultat", 0.0) or 0.0
+                produits = ligne.get("Produits", 0.0) or 0.0
+                charges = ligne.get("Charges", 0.0) or 0.0
+                couleur_res = "#5EB2A1" if resultat >= 0 else "#E5483A"
+                # Construit l'en-tête à partir des dimensions disponibles
+                entete_parts = []
+                if "Entite" in ligne and ligne["Entite"]:
+                    entete_parts.append(str(ligne["Entite"]))
+                if "Exercice" in ligne and ligne["Exercice"]:
+                    entete_parts.append(f"Exercice {ligne['Exercice']}")
+                entete = " — ".join(entete_parts) if entete_parts else "Global"
+
+                with cols_cartes[j]:
+                    st.markdown(
+                        f"""
+                        <div style="
+                            background: white;
+                            border: 1px solid var(--ext-bord);
+                            border-left: 4px solid {couleur_res};
+                            border-radius: 12px;
+                            padding: 16px 20px;
+                            margin-bottom: 8px;
+                        ">
+                            <div style="
+                                color: var(--ext-gris-bleu);
+                                font-size: 0.85rem;
+                                font-weight: 500;
+                                margin-bottom: 8px;
+                                text-transform: uppercase;
+                                letter-spacing: 0.04em;
+                            ">{entete}</div>
+                            <div style="display: flex; justify-content: space-between; font-size: 0.9rem; color: var(--ext-texte);">
+                                <span>Produits (cl. 7)</span>
+                                <span style="font-variant-numeric: tabular-nums;">{_format_euros(produits)}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; font-size: 0.9rem; color: var(--ext-texte);">
+                                <span>Charges (cl. 6)</span>
+                                <span style="font-variant-numeric: tabular-nums;">{_format_euros(charges)}</span>
+                            </div>
+                            <hr style="margin: 8px 0; border: none; border-top: 1px solid var(--ext-bord);">
+                            <div style="display: flex; justify-content: space-between; font-weight: 700; font-size: 1.05rem;">
+                                <span style="color: var(--ext-bleu);">Résultat estimé</span>
+                                <span style="color: {couleur_res}; font-variant-numeric: tabular-nums;">{_format_euros(resultat)}</span>
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
     st.markdown("#### 📥 Télécharger les résultats")
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     with col1:
         st.download_button(
             "📊  FEC enrichi",
@@ -787,15 +913,6 @@ if st.session_state.resultats:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
             key="dl_diag_xlsx",
-        )
-    with col3:
-        st.download_button(
-            "🔧  Diagnostic JSON",
-            res["bytes_diag_json"],
-            file_name=res["nom_diag_json"],
-            mime="application/json",
-            use_container_width=True,
-            key="dl_diag_json",
         )
 
     st.caption(

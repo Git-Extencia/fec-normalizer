@@ -151,6 +151,86 @@ def cumuler_fec(
     return pl.concat(dfs, how="diagonal_relaxed")
 
 
+def concatener_fec_enrichis(dataframes: list[pl.DataFrame]) -> pl.DataFrame:
+    """
+    Concatène simplement plusieurs DataFrames FEC déjà enrichis.
+
+    Utilisé en mode unifié (multi-société + multi-exercice) : chaque
+    DataFrame est passé séparément à enrichir() avec ses propres valeurs
+    d'entite et d'exercice, puis on les empile via cette fonction sans
+    re-définir aucune colonne (contrairement à cumuler_fec qui ajoute
+    une colonne à la volée).
+    """
+    if not dataframes:
+        raise ValueError("Aucun DataFrame à concaténer.")
+    return pl.concat(dataframes, how="diagonal_relaxed")
+
+
+def calculer_resultat_par_groupe(df: pl.DataFrame) -> pl.DataFrame:
+    """
+    Calcule le résultat comptable estimé par combinaison (Entite × Exercice).
+
+    Formule métier :
+        Produits  = somme(Crédit − Débit) sur les écritures de classe 7
+        Charges   = somme(Débit − Crédit) sur les écritures de classe 6
+        Résultat  = Produits − Charges
+
+    Important : ce résultat est *indicatif* (FEC brut, avant écritures de
+    clôture). À présenter à l'auditeur comme tel, pas comme le résultat
+    fiscal définitif.
+
+    Le groupement se fait automatiquement selon les colonnes disponibles :
+    - Entite + Exercice : groupement à 2 dimensions
+    - Entite seule : groupement par société (cas dossier groupe sans pluriannuel)
+    - Exercice seul : groupement par exercice (cas mono-société pluriannuel)
+    - Aucun des deux : 1 seule ligne globale
+
+    Args:
+        df: DataFrame enrichi (doit contenir au minimum Racine, Debit, Credit)
+
+    Returns:
+        DataFrame avec colonnes : [Entite,] [Exercice,] Produits, Charges, Resultat
+    """
+    if "Racine" not in df.columns:
+        raise ValueError(
+            "La colonne 'Racine' est requise. Appliquer enrichir() avant."
+        )
+
+    # On ne garde que les écritures de classe 6 (charges) et 7 (produits)
+    df_67 = df.filter(pl.col("Racine").is_in(["6", "7"]))
+
+    # Détermine les dimensions de groupement présentes
+    dimensions = [c for c in ("Entite", "Exercice") if c in df.columns]
+
+    # Agrégats Produits / Charges
+    agg_exprs = [
+        pl.when(pl.col("Racine") == "7")
+          .then(pl.col("Credit") - pl.col("Debit"))
+          .otherwise(0.0)
+          .sum()
+          .round(2)
+          .alias("Produits"),
+        pl.when(pl.col("Racine") == "6")
+          .then(pl.col("Debit") - pl.col("Credit"))
+          .otherwise(0.0)
+          .sum()
+          .round(2)
+          .alias("Charges"),
+    ]
+
+    if dimensions:
+        resultat = df_67.group_by(dimensions).agg(agg_exprs)
+        resultat = resultat.sort(dimensions)
+    else:
+        resultat = df_67.select(agg_exprs)
+
+    # Colonne Résultat = Produits − Charges
+    resultat = resultat.with_columns(
+        (pl.col("Produits") - pl.col("Charges")).round(2).alias("Resultat")
+    )
+    return resultat
+
+
 def reorganiser_colonnes(df: pl.DataFrame) -> pl.DataFrame:
     """
     Réordonne les colonnes pour mettre les colonnes calculées en tête.

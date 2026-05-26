@@ -14,6 +14,7 @@ from __future__ import annotations
 import getpass
 import hashlib
 import platform
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Tuple
@@ -155,6 +156,44 @@ def lire_fec(chemin: str | Path) -> pl.DataFrame:
             )
 
     return df
+
+
+def deduire_exercice_depuis_nom(nom_fichier: str) -> str | None:
+    """
+    Devine le libellé d'exercice à partir du nom de fichier normé DGFiP.
+
+    Convention DGFiP officielle : le nom d'un FEC est construit ainsi
+        <SIREN sur 9 chiffres><texte libre éventuel>FEC<AAAAMMJJ>.txt
+    où AAAAMMJJ est la date de clôture de l'exercice.
+
+    Logique de libellé retournée :
+    - Si la date de clôture est un 31/12 → exercice civil → on retourne juste
+      l'année "AAAA" (ex. "2025")
+    - Si la date de clôture est autre → exercice décalé → on retourne "MM/AAAA"
+      (ex. "06/2025" pour une clôture au 30/06)
+    - Si la date n'est pas détectable dans le nom → None (l'auditeur saisira
+      le libellé à la main).
+
+    Args:
+        nom_fichier: Nom du fichier FEC (avec ou sans extension).
+
+    Returns:
+        Libellé d'exercice (str) ou None si non détectable.
+    """
+    stem = Path(nom_fichier).stem
+    # On cherche 8 chiffres consécutifs à la fin (la date de clôture AAAAMMJJ)
+    match = re.search(r"(\d{4})(\d{2})(\d{2})\s*$", stem)
+    if not match:
+        return None
+    annee, mois, jour = match.groups()
+    # Validation basique : année plausible (1990-2099), mois 01-12, jour 01-31
+    if not (1990 <= int(annee) <= 2099 and 1 <= int(mois) <= 12 and 1 <= int(jour) <= 31):
+        return None
+    # Exercice civil clôturé au 31/12 → libellé = année seule
+    if mois == "12" and jour == "31":
+        return annee
+    # Exercice décalé → libellé = MM/AAAA
+    return f"{mois}/{annee}"
 
 
 def calculer_hash_sha256(chemin: Path, taille_buffer: int = 65536) -> str:
