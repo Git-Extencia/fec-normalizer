@@ -505,7 +505,13 @@ _section_titre(3, "Traitement")
 multi_fec = uploaded_files and len(uploaded_files) > 1
 libelles_manquants = multi_fec and any(not lib.strip() for lib in libelles)
 
-bouton_lance = st.button(
+# Placeholder qui sera remplacé par un bandeau "traitement en cours"
+# dès que l'utilisateur clique sur le bouton — pour bien marquer
+# visuellement que quelque chose se passe et empêcher tout reclic.
+bouton_placeholder = st.empty()
+progress_placeholder = st.empty()
+
+bouton_lance = bouton_placeholder.button(
     "🚀  Lancer le traitement",
     disabled=(not uploaded_files) or libelles_manquants,
     type="primary",
@@ -528,6 +534,38 @@ if bouton_lance and uploaded_files:
     st.session_state.resultats = None
     session_dir = Path(tempfile.mkdtemp(prefix="fec_session_"))
 
+    # --- Remplace immédiatement le bouton par un bandeau bien visible ---
+    # Plus aucune ambiguïté sur le fait que le traitement est lancé,
+    # et plus aucun moyen de cliquer une 2e fois par erreur.
+    bouton_placeholder.markdown(
+        """
+        <div style="
+            background: linear-gradient(135deg, var(--ext-turquoise), #4d9788);
+            color: white;
+            padding: 18px 24px;
+            border-radius: 10px;
+            text-align: center;
+            font-weight: 600;
+            font-size: 1.05rem;
+            box-shadow: 0 4px 16px rgba(94, 178, 161, 0.35);
+            animation: pulse 2s ease-in-out infinite;
+        ">
+            ⏳ Traitement en cours — ne fermez pas la page
+        </div>
+        <style>
+            @keyframes pulse {
+                0%, 100% { opacity: 1; }
+                50% { opacity: 0.85; }
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # Barre de progression visible juste sous le bandeau, mise à jour à
+    # chaque grande étape du pipeline.
+    progress_bar = progress_placeholder.progress(0, text="Initialisation…")
+
     try:
         # Sauvegarde temporaire des uploads
         chemins_locaux: list[Path] = []
@@ -537,11 +575,13 @@ if bouton_lance and uploaded_files:
             chemins_locaux.append(chemin)
 
         multi = len(chemins_locaux) > 1
+        progress_bar.progress(10, text="Fichiers réceptionnés…")
 
         with st.status("Traitement en cours...", expanded=True) as status:
             transformations: list[dict] = []
 
             # Étape 1 — Lecture
+            progress_bar.progress(20, text="Lecture du/des FEC…")
             st.write("📥 **Lecture du/des FEC**")
             t0 = time.perf_counter()
             dfs: list[tuple] = []
@@ -579,6 +619,7 @@ if bouton_lance and uploaded_files:
             })
 
             # Étape 2 — Enrichissement
+            progress_bar.progress(40, text="Enrichissement des colonnes…")
             st.write("🔧 **Enrichissement des colonnes de travail**")
             t0 = time.perf_counter()
             if multi:
@@ -623,6 +664,7 @@ if bouton_lance and uploaded_files:
                 )
 
             # Étape 3 — Export
+            progress_bar.progress(65, text="Export Excel en cours (étape la plus longue)…")
             st.write("📤 **Export Excel**")
             t0 = time.perf_counter()
             nom_base = (
@@ -641,6 +683,7 @@ if bouton_lance and uploaded_files:
             st.write(f"  ✓ Export en {duree_export:.2f} s")
 
             # Étape 4 — Diagnostic
+            progress_bar.progress(90, text="Génération du rapport de diagnostic…")
             st.write("📋 **Rapport de diagnostic**")
             rapport = creer_rapport_diagnostic(
                 chemins_locaux[0],
@@ -670,6 +713,7 @@ if bouton_lance and uploaded_files:
                 encoding="utf-8",
             )
             st.write(f"  ✓ SHA-256 source : `{rapport['fichier_sha256'][:16]}…`")
+            progress_bar.progress(100, text="✅ Terminé")
             status.update(label="✅ Traitement terminé", state="complete")
 
         # --- Lecture des bytes en mémoire AVANT suppression du dossier ---
@@ -694,6 +738,10 @@ if bouton_lance and uploaded_files:
         # session_state vit dans la mémoire vive du worker, est nettoyé à la
         # fin de la session ou quand on relance un traitement.
         shutil.rmtree(session_dir, ignore_errors=True)
+        # Nettoyage des placeholders UI (bandeau + barre de progression)
+        # pour que l'utilisateur voie les résultats sans bruit visuel.
+        bouton_placeholder.empty()
+        progress_placeholder.empty()
 
 
 # ---------------------------------------------------------------------------
