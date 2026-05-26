@@ -51,12 +51,15 @@ services:
       - "traefik.http.middlewares.fec-https-redirect.redirectscheme.scheme=https"
       - "traefik.http.middlewares.fec-https-redirect.redirectscheme.permanent=true"
 
-    # Limites raisonnables pour ne pas saturer le VPS
-    deploy:
-      resources:
-        limits:
-          memory: 2G
-          cpus: "1.5"
+    # Limites mémoire — 6 Go suffisent pour traiter plusieurs FEC Carrefour
+    # cumulés (Polars charge tout en RAM). Le VPS a 7,75 Go au total dont
+    # ~1 Go consommé par N8N + système, donc on est large.
+    #
+    # IMPORTANT : on utilise mem_limit + cpus directement plutôt que
+    # deploy.resources.limits parce que ce dernier n'est appliqué qu'en
+    # mode Docker Swarm, pas en mode `docker compose` standalone.
+    mem_limit: 6g
+    cpus: 2.0
 
 # Network externe — celui du projet n8n où vit Traefik
 # (vérifié via `docker network ls` sur le VPS Hostinger)
