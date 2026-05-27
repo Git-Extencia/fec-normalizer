@@ -52,6 +52,9 @@ archives/
 # ----------------------------------------------------------------------------
 *.docx
 *.pdf
+# Exception : le manuel utilisateur est embarqué dans l'image Docker
+# pour être servi en téléchargement depuis la page d'accueil.
+!Manuel utilisateur FEC Normalizer.docx
 
 # Variables d'environnement (secrets éventuels — jamais dans Git)
 .env

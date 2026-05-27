@@ -62,7 +62,9 @@ COPY parser_fec.py enrichissement.py export.py app_streamlit.py ./
 COPY logo_auditoria_blanc.svg ./
 COPY logo_extencia_blanc.svg logo_extencia_couleur.svg ./
 # Manuel utilisateur servi en téléchargement direct depuis la page d'accueil.
-COPY "Manuel utilisateur FEC Normalizer.docx" ./
+# Forme JSON-array obligatoire ici car le nom du fichier contient des espaces
+# (la forme simple `COPY "fichier avec espaces" ./` ne parse pas).
+COPY ["Manuel utilisateur FEC Normalizer.docx", "./"]
 
 # Utilisateur non-root pour la sécurité
 RUN useradd --system --uid 1001 --create-home appuser \
