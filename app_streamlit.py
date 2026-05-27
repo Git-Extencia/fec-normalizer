@@ -50,7 +50,7 @@ from export import (
 )
 
 
-VERSION = "1.2"
+VERSION = "1.3"
 COLONNES_CRITIQUES = ("CompteNum", "EcritureDate", "Debit", "Credit")
 RACINE_PROJET = Path(__file__).parent
 # Logo blanc adapté au header bleu marine (charte Extencia : version sombre)
@@ -928,6 +928,12 @@ if st.session_state.resultats:
                     )
 
     st.markdown("#### 📥 Télécharger les résultats")
+    st.caption(
+        "💡 Le fichier enrichi contient deux conventions de solde au choix : "
+        "**Solde** = Débit − Crédit (positif = compte débiteur), "
+        "**Montant** = Crédit − Débit (positif = compte créditeur). "
+        "Vous prenez celle qui correspond à votre habitude au moment du TCD."
+    )
     col1, col2 = st.columns(2)
     with col1:
         st.download_button(

@@ -26,6 +26,27 @@ LIBELLES_CLASSES = {
 }
 
 
+# Libellés français des mois — préfixés par leur numéro pour conserver un tri
+# lexicographique correct (01-Janvier vient bien avant 02-Février). Le mois
+# pur (sans année) est volontaire : l'année est déjà disponible dans la
+# colonne Annee, et cette séparation donne des TCD bien plus lisibles
+# (Annee en colonne, Mois en ligne, par exemple).
+LIBELLES_MOIS = {
+    1: "01-Janvier",
+    2: "02-Février",
+    3: "03-Mars",
+    4: "04-Avril",
+    5: "05-Mai",
+    6: "06-Juin",
+    7: "07-Juillet",
+    8: "08-Août",
+    9: "09-Septembre",
+    10: "10-Octobre",
+    11: "11-Novembre",
+    12: "12-Décembre",
+}
+
+
 def enrichir(
     df: pl.DataFrame,
     entite: str | None = None,
@@ -49,11 +70,13 @@ def enrichir(
         - Racine (1 à 8)
         - ClasseLib (libellé de la classe PCG)
         - Sous_Racine (2 premiers chiffres : 40, 41, 60...)
-        - Mois (AAAA-MM)
+        - Racine_3 (3 premiers chiffres : 401, 411, 607...)
+        - Mois (01-Janvier à 12-Décembre — préfixé pour tri)
         - Annee (AAAA)
-        - Trimestre (AAAA-T1...T4)
-        - Solde (Debit - Credit)
-        - Sens (D ou C)
+        - Trimestre (T1 à T4 — l'année est dans la colonne Annee)
+        - Solde (Débit − Crédit, positif = compte débiteur)
+        - Montant (Crédit − Débit, positif = compte créditeur)
+        - Sens (D, C, ou =)
     """
     nouvelles_colonnes = []
 
@@ -91,20 +114,31 @@ def enrichir(
     ])
 
     # Découpages temporels
-    # Trimestre au format "AAAA-Tn" (ex. "2025-T3") pour tri lexicographique correct.
+    # Mois au format "01-Janvier" : numéro en préfixe pour le tri, nom complet
+    # en français pour la lecture. L'année reste dans une colonne séparée.
+    # Trimestre simple "T1" à "T4" pour la même raison (année déjà disponible).
     nouvelles_colonnes.extend([
-        pl.col("EcritureDate").dt.strftime("%Y-%m").alias("Mois"),
+        pl.col("EcritureDate")
+          .dt.month()
+          .replace_strict(LIBELLES_MOIS, default="??-Inconnu")
+          .alias("Mois"),
         pl.col("EcritureDate").dt.year().alias("Annee"),
         (
-            pl.col("EcritureDate").dt.strftime("%Y")
-            + pl.lit("-T")
-            + pl.col("EcritureDate").dt.quarter().cast(pl.Utf8)
+            pl.lit("T") + pl.col("EcritureDate").dt.quarter().cast(pl.Utf8)
         ).alias("Trimestre"),
     ])
 
-    # Calcul solde et sens
+    # Calcul Solde / Montant / Sens
+    # On expose volontairement les deux conventions de calcul du solde signé
+    # car elles co-existent chez nos auditeurs :
+    #   - Solde   = Débit − Crédit (positif = compte débiteur)
+    #   - Montant = Crédit − Débit (positif = compte créditeur)
+    # L'auditeur prend celle qui correspond à son habitude au moment du TCD,
+    # sans avoir à relancer un traitement. Coût en stockage : 1 colonne en
+    # plus, négligeable.
     nouvelles_colonnes.extend([
         (pl.col("Debit") - pl.col("Credit")).round(2).alias("Solde"),
+        (pl.col("Credit") - pl.col("Debit")).round(2).alias("Montant"),
         pl.when(pl.col("Debit") > pl.col("Credit"))
           .then(pl.lit("D"))
           .when(pl.col("Credit") > pl.col("Debit"))
@@ -245,7 +279,7 @@ def reorganiser_colonnes(df: pl.DataFrame) -> pl.DataFrame:
         "CompteNum", "CompteLib",
         "CompAuxNum", "CompAuxLib",
         "PieceRef", "PieceDate", "EcritureLib",
-        "Debit", "Credit", "Solde", "Sens",
+        "Debit", "Credit", "Solde", "Montant", "Sens",
         "EcritureLet", "DateLet", "ValidDate",
         "Montantdevise", "Idevise",
     ]
