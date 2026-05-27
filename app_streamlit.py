@@ -50,7 +50,7 @@ from export import (
 )
 
 
-VERSION = "1.4"
+VERSION = "1.5"
 COLONNES_CRITIQUES = ("CompteNum", "EcritureDate", "Debit", "Credit")
 RACINE_PROJET = Path(__file__).parent
 # Logo blanc adapté au header bleu marine — marque Auditoria (pôle audit
@@ -105,61 +105,130 @@ st.markdown(
             padding-bottom: 4rem;
         }
 
-        /* ---- Bandeau d'en-tête ---- */
+        /* ---- Bandeau d'en-tête unifié (header + manuel + confidentialité) ---- */
         .ext-header {
             background: linear-gradient(135deg, var(--ext-bleu) 0%, var(--ext-bleu-2) 100%);
             color: white;
-            padding: 32px 40px;
-            border-radius: 16px;
+            border-radius: 18px;
             margin-bottom: 32px;
-            box-shadow: 0 8px 28px rgba(21, 38, 57, 0.18);
+            box-shadow: 0 12px 36px rgba(21, 38, 57, 0.22);
+            overflow: hidden;
+            position: relative;
+        }
+        /* Halo turquoise décoratif en coin haut-droite */
+        .ext-header::before {
+            content: "";
+            position: absolute;
+            top: -80px;
+            right: -80px;
+            width: 260px;
+            height: 260px;
+            background: radial-gradient(circle, rgba(94, 178, 161, 0.22) 0%, transparent 65%);
+            pointer-events: none;
+            z-index: 0;
+        }
+        /* Petite "vague" sous-jacente côté gauche pour donner du relief */
+        .ext-header::after {
+            content: "";
+            position: absolute;
+            bottom: -120px;
+            left: -60px;
+            width: 280px;
+            height: 280px;
+            background: radial-gradient(circle, rgba(255, 255, 255, 0.04) 0%, transparent 70%);
+            pointer-events: none;
+            z-index: 0;
+        }
+        .ext-header-top {
             display: flex;
             align-items: center;
-            gap: 28px;
+            justify-content: space-between;
+            gap: 32px;
+            padding: 30px 38px 26px;
+            position: relative;
+            z-index: 1;
         }
-        .ext-header img { height: 48px; }
-        .ext-header h1 {
+        .ext-header-brand {
+            display: flex;
+            align-items: center;
+            gap: 26px;
+        }
+        .ext-header-brand img {
+            height: 52px;
+            filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.15));
+        }
+        .ext-header-brand h1 {
             color: white !important;
             margin: 0 !important;
             border: none !important;
             padding: 0 !important;
             font-weight: 700;
-            font-size: 1.85rem;
-            letter-spacing: -0.01em;
+            font-size: 1.9rem;
+            letter-spacing: -0.015em;
+            line-height: 1.1;
         }
-        .ext-header p {
+        .ext-header-brand p {
             color: rgba(255, 255, 255, 0.7);
-            margin: 4px 0 0 0;
+            margin: 6px 0 0 0;
             font-size: 0.92rem;
             font-weight: 300;
         }
-
-        /* ---- Encart confidentialité ---- */
-        .ext-banner-info {
-            background: white;
-            border: 1px solid var(--ext-bord);
+        /* Lien de téléchargement du manuel : pill-button turquoise translucide */
+        .ext-header-manuel {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 11px 20px;
             border-radius: 12px;
-            padding: 14px 20px;
-            margin-bottom: 32px;
-            color: var(--ext-texte);
+            background: rgba(94, 178, 161, 0.18);
+            border: 1px solid rgba(94, 178, 161, 0.55);
+            color: white !important;
+            text-decoration: none !important;
+            font-weight: 500;
+            font-size: 0.88rem;
+            transition: all 0.25s ease;
+            white-space: nowrap;
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+        }
+        .ext-header-manuel:hover {
+            background: var(--ext-turquoise);
+            border-color: var(--ext-turquoise);
+            transform: translateY(-1px);
+            box-shadow: 0 6px 18px rgba(94, 178, 161, 0.4);
+            color: white !important;
+        }
+        .ext-header-manuel-icon { font-size: 1.05rem; }
+        /* Bandeau confidentialité intégré : strip clair en bas du header */
+        .ext-header-info {
             display: flex;
             align-items: center;
-            gap: 12px;
-            box-shadow: 0 1px 2px rgba(21, 38, 57, 0.03);
+            gap: 14px;
+            padding: 14px 38px;
+            background: rgba(255, 255, 255, 0.06);
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            font-size: 0.85rem;
+            color: rgba(255, 255, 255, 0.82);
+            position: relative;
+            z-index: 1;
         }
-        .ext-banner-info .ext-icon {
-            background: var(--ext-turquoise-clair);
-            color: var(--ext-turquoise);
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            display: flex;
+        .ext-header-info-icon {
+            display: inline-flex;
             align-items: center;
             justify-content: center;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: rgba(94, 178, 161, 0.22);
+            color: var(--ext-turquoise);
+            font-size: 0.9rem;
             flex-shrink: 0;
-            font-size: 1.1rem;
         }
-        .ext-banner-info b { color: var(--ext-bleu); }
+        .ext-header-info b { color: white; font-weight: 600; }
+        @media (max-width: 720px) {
+            .ext-header-top { flex-direction: column; align-items: flex-start; gap: 18px; }
+            .ext-header-info { padding: 12px 24px; flex-wrap: wrap; }
+        }
 
         /* ---- Titres de section : numéro dans pastille ronde ---- */
         h2 {
@@ -264,22 +333,28 @@ st.markdown(
         /* ---- Métriques ---- */
         [data-testid="stMetric"] {
             background: white;
-            padding: 16px 20px;
-            border-radius: 12px;
+            padding: 18px 22px;
+            border-radius: 14px;
             border: 1px solid var(--ext-bord);
             box-shadow: 0 1px 2px rgba(21, 38, 57, 0.03);
+            transition: all 0.25s ease;
+        }
+        [data-testid="stMetric"]:hover {
+            border-color: rgba(94, 178, 161, 0.35);
+            box-shadow: 0 4px 14px rgba(21, 38, 57, 0.06);
+            transform: translateY(-1px);
         }
         [data-testid="stMetric"] label {
             color: var(--ext-gris-bleu);
             font-weight: 500;
-            font-size: 0.8rem !important;
+            font-size: 0.78rem !important;
             text-transform: uppercase;
-            letter-spacing: 0.04em;
+            letter-spacing: 0.06em;
         }
         [data-testid="stMetric"] [data-testid="stMetricValue"] {
             color: var(--ext-bleu);
             font-weight: 700;
-            font-size: 1.4rem !important;
+            font-size: 1.45rem !important;
         }
 
         /* ---- Alertes (success/warning/error/info) ---- */
@@ -290,15 +365,28 @@ st.markdown(
 
         /* ---- Footer ---- */
         .ext-footer {
-            margin-top: 56px;
-            padding-top: 20px;
+            margin-top: 64px;
+            padding-top: 24px;
             border-top: 1px solid var(--ext-bord);
             text-align: center;
             color: var(--ext-gris-bleu);
             font-size: 0.82rem;
             font-weight: 400;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
         }
         .ext-footer b { color: var(--ext-turquoise); font-weight: 600; }
+        .ext-footer-sep {
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            background: var(--ext-gris-bleu);
+            opacity: 0.5;
+            display: inline-block;
+        }
 
         /* ---- Espacement Streamlit ---- */
         .element-container { margin-bottom: 0.6rem; }
@@ -313,26 +401,26 @@ def _section_titre(numero: int, titre: str) -> None:
     """Titre de section avec numéro dans une pastille ronde turquoise."""
     st.markdown(
         f"""
-        <div style="display:flex;align-items:center;gap:14px;margin-top:2rem;margin-bottom:1rem;">
+        <div style="display:flex;align-items:center;gap:14px;margin-top:2.2rem;margin-bottom:1rem;">
             <div style="
-                background: var(--ext-turquoise);
+                background: linear-gradient(135deg, var(--ext-turquoise) 0%, #4d9788 100%);
                 color: white;
-                width: 32px;
-                height: 32px;
+                width: 34px;
+                height: 34px;
                 border-radius: 50%;
                 display: flex;
                 align-items: center;
                 justify-content: center;
                 font-weight: 700;
                 font-size: 0.95rem;
-                box-shadow: 0 2px 6px rgba(94, 178, 161, 0.3);
+                box-shadow: 0 4px 12px rgba(94, 178, 161, 0.35);
                 flex-shrink: 0;
             ">{numero}</div>
             <div style="
                 color: var(--ext-bleu);
                 font-weight: 600;
-                font-size: 1.25rem;
-                letter-spacing: -0.01em;
+                font-size: 1.28rem;
+                letter-spacing: -0.015em;
             ">{titre}</div>
         </div>
         """,
@@ -350,6 +438,22 @@ def _logo_base64() -> str | None:
         return None
     contenu = LOGO_PATH.read_bytes()
     return base64.b64encode(contenu).decode("ascii")
+
+
+@st.cache_data(show_spinner=False)
+def _manuel_base64() -> str | None:
+    """
+    Charge le manuel utilisateur en base64 pour servir un lien <a href="data:...">
+    directement intégré dans le header (sans avoir à passer par un
+    st.download_button séparé qui casse la mise en page).
+
+    Mis en cache pour éviter de relire/encoder le fichier à chaque rerun
+    Streamlit. Le manuel est petit (~20 Ko) donc l'inflation base64 est
+    négligeable.
+    """
+    if not MANUEL_PATH.exists():
+        return None
+    return base64.b64encode(MANUEL_PATH.read_bytes()).decode("ascii")
 
 
 def _deduire_libelle_annee(nom_fichier: str, index: int) -> str:
@@ -420,55 +524,56 @@ def _format_euros(montant: float) -> str:
 # ---------------------------------------------------------------------------
 
 logo_b64 = _logo_base64()
-if logo_b64:
-    st.markdown(
-        f"""
-        <div class="ext-header">
-            <img src="data:image/svg+xml;base64,{logo_b64}" alt="Auditoria" />
-            <div>
-                <h1>FEC Normalizer</h1>
-                <p>Outil de retraitement des Fichiers d'Écritures Comptables — Pôle Audit</p>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-else:
-    st.title("FEC Normalizer")
-    st.caption(
-        "Outil de retraitement des Fichiers d'Écritures Comptables — Auditoria"
+manuel_b64 = _manuel_base64()
+
+# Lien de téléchargement du manuel via data URI base64 — permet d'intégrer
+# le bouton dans le HTML du header (sinon st.download_button apparaît en
+# bloc séparé). Mime word officiel pour que les navigateurs proposent le
+# bon nom de fichier au moment du téléchargement.
+manuel_html = ""
+if manuel_b64:
+    manuel_html = (
+        '<a class="ext-header-manuel" '
+        'href="data:application/vnd.openxmlformats-officedocument'
+        f'.wordprocessingml.document;base64,{manuel_b64}" '
+        'download="Manuel utilisateur FEC Normalizer.docx" '
+        'title="Télécharger le manuel utilisateur (Word)">'
+        '<span class="ext-header-manuel-icon">📖</span>'
+        '<span>Manuel utilisateur</span>'
+        '</a>'
     )
 
+if logo_b64:
+    logo_html = (
+        f'<img src="data:image/svg+xml;base64,{logo_b64}" alt="Auditoria" />'
+    )
+else:
+    logo_html = ""  # fallback silencieux : le titre reste lisible
+
 st.markdown(
-    """
-    <div class="ext-banner-info">
-        <div class="ext-icon">🔒</div>
-        <div>
-            <b>Confidentialité</b> — Vos fichiers sont traités en mémoire et supprimés
-            immédiatement après téléchargement. Aucun FEC n'est conservé sur le serveur.
+    f"""
+    <div class="ext-header">
+        <div class="ext-header-top">
+            <div class="ext-header-brand">
+                {logo_html}
+                <div>
+                    <h1>FEC Normalizer</h1>
+                    <p>Outil de retraitement des Fichiers d'Écritures Comptables — Auditoria</p>
+                </div>
+            </div>
+            {manuel_html}
+        </div>
+        <div class="ext-header-info">
+            <div class="ext-header-info-icon">🔒</div>
+            <div>
+                <b>Confidentialité</b> — Vos fichiers sont traités en mémoire et supprimés
+                immédiatement après téléchargement. Aucun FEC n'est conservé sur le serveur.
+            </div>
         </div>
     </div>
     """,
     unsafe_allow_html=True,
 )
-
-# Bouton discret de téléchargement du manuel utilisateur (utile pour les
-# nouveaux collaborateurs ou en cas de doute sur un point précis d'usage).
-# Placé en haut pour rester accessible avant de commencer un traitement.
-if MANUEL_PATH.exists():
-    col_manuel, _ = st.columns([1, 3])
-    with col_manuel:
-        with open(MANUEL_PATH, "rb") as _f_manuel:
-            st.download_button(
-                "📖 Manuel utilisateur (.docx)",
-                _f_manuel.read(),
-                file_name=MANUEL_PATH.name,
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                use_container_width=True,
-                key="dl_manuel",
-                help="Guide complet d'utilisation à conserver dans votre dossier "
-                     "de référence — version à jour de l'outil.",
-            )
 
 
 # ---------------------------------------------------------------------------
@@ -998,8 +1103,11 @@ if st.session_state.resultats:
 st.markdown(
     f"""
     <div class="ext-footer">
-        <b>FEC Normalizer v{VERSION}</b>  •  Pôle Innovation Hub Extencia  •
-        Conforme norme DGFiP <i>BOI-CF-IOR-60-40-20-10</i>
+        <span><b>FEC Normalizer v{VERSION}</b></span>
+        <span class="ext-footer-sep"></span>
+        <span>Pôle Innovation Hub Extencia</span>
+        <span class="ext-footer-sep"></span>
+        <span>Conforme norme DGFiP <i>BOI-CF-IOR-60-40-20-10</i></span>
     </div>
     """,
     unsafe_allow_html=True,

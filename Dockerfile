@@ -17,7 +17,7 @@ FROM python:3.12-slim
 LABEL org.opencontainers.image.title="FEC Normalizer"
 LABEL org.opencontainers.image.description="Outil de retraitement FEC pour le pôle Audit Extencia"
 LABEL org.opencontainers.image.vendor="Extencia — Pôle Innovation Hub"
-LABEL org.opencontainers.image.version="1.4"
+LABEL org.opencontainers.image.version="1.5"
 
 # Polars peut nécessiter libgomp1 (OpenMP) sur certaines plateformes
 RUN apt-get update \
