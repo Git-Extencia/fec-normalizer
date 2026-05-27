@@ -36,6 +36,8 @@ archives/
 *.docx
 *.md
 !README.md
+# Exception : le manuel utilisateur est servi en téléchargement depuis l'app
+!Manuel utilisateur FEC Normalizer.docx
 
 # Exécutables et scripts annexes non utilisés par l'app web
 cli.py

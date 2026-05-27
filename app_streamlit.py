@@ -50,11 +50,14 @@ from export import (
 )
 
 
-VERSION = "1.3"
+VERSION = "1.4"
 COLONNES_CRITIQUES = ("CompteNum", "EcritureDate", "Debit", "Credit")
 RACINE_PROJET = Path(__file__).parent
-# Logo blanc adapté au header bleu marine (charte Extencia : version sombre)
-LOGO_PATH = RACINE_PROJET / "logo_extencia_blanc.svg"
+# Logo blanc adapté au header bleu marine — marque Auditoria (pôle audit
+# du groupe Extencia) puisque c'est la cible utilisateur de l'outil.
+LOGO_PATH = RACINE_PROJET / "logo_auditoria_blanc.svg"
+# Manuel utilisateur téléchargeable depuis la page d'accueil.
+MANUEL_PATH = RACINE_PROJET / "Manuel utilisateur FEC Normalizer.docx"
 
 
 # ---------------------------------------------------------------------------
@@ -62,7 +65,7 @@ LOGO_PATH = RACINE_PROJET / "logo_extencia_blanc.svg"
 # ---------------------------------------------------------------------------
 
 st.set_page_config(
-    page_title="FEC Normalizer — Extencia",
+    page_title="FEC Normalizer — Auditoria",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -421,7 +424,7 @@ if logo_b64:
     st.markdown(
         f"""
         <div class="ext-header">
-            <img src="data:image/svg+xml;base64,{logo_b64}" alt="Extencia" />
+            <img src="data:image/svg+xml;base64,{logo_b64}" alt="Auditoria" />
             <div>
                 <h1>FEC Normalizer</h1>
                 <p>Outil de retraitement des Fichiers d'Écritures Comptables — Pôle Audit</p>
@@ -433,7 +436,7 @@ if logo_b64:
 else:
     st.title("FEC Normalizer")
     st.caption(
-        "Outil de retraitement des Fichiers d'Écritures Comptables — Pôle Audit Extencia"
+        "Outil de retraitement des Fichiers d'Écritures Comptables — Auditoria"
     )
 
 st.markdown(
@@ -448,6 +451,24 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+# Bouton discret de téléchargement du manuel utilisateur (utile pour les
+# nouveaux collaborateurs ou en cas de doute sur un point précis d'usage).
+# Placé en haut pour rester accessible avant de commencer un traitement.
+if MANUEL_PATH.exists():
+    col_manuel, _ = st.columns([1, 3])
+    with col_manuel:
+        with open(MANUEL_PATH, "rb") as _f_manuel:
+            st.download_button(
+                "📖 Manuel utilisateur (.docx)",
+                _f_manuel.read(),
+                file_name=MANUEL_PATH.name,
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                use_container_width=True,
+                key="dl_manuel",
+                help="Guide complet d'utilisation à conserver dans votre dossier "
+                     "de référence — version à jour de l'outil.",
+            )
 
 
 # ---------------------------------------------------------------------------

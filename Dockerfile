@@ -17,7 +17,7 @@ FROM python:3.12-slim
 LABEL org.opencontainers.image.title="FEC Normalizer"
 LABEL org.opencontainers.image.description="Outil de retraitement FEC pour le pôle Audit Extencia"
 LABEL org.opencontainers.image.vendor="Extencia — Pôle Innovation Hub"
-LABEL org.opencontainers.image.version="1.3"
+LABEL org.opencontainers.image.version="1.4"
 
 # Polars peut nécessiter libgomp1 (OpenMP) sur certaines plateformes
 RUN apt-get update \
@@ -57,7 +57,12 @@ RUN pip install -r requirements.txt
 
 # Code de l'application
 COPY parser_fec.py enrichissement.py export.py app_streamlit.py ./
+# Logos disponibles dans le repo (Auditoria utilisé en production, Extencia
+# conservé en archive pour bascule éventuelle entre marques du groupe).
+COPY logo_auditoria_blanc.svg ./
 COPY logo_extencia_blanc.svg logo_extencia_couleur.svg ./
+# Manuel utilisateur servi en téléchargement direct depuis la page d'accueil.
+COPY "Manuel utilisateur FEC Normalizer.docx" ./
 
 # Utilisateur non-root pour la sécurité
 RUN useradd --system --uid 1001 --create-home appuser \
