@@ -11,6 +11,7 @@ Gère automatiquement :
 
 from __future__ import annotations
 
+import codecs
 import getpass
 import hashlib
 import platform
@@ -30,8 +31,60 @@ COLONNES_FEC_NORME = [
     "EcritureLet", "DateLet", "ValidDate", "Montantdevise", "Idevise"
 ]
 
-ENCODAGES_TESTES = ["utf-8", "iso-8859-1", "cp1252", "utf-16"]
+# Ordre volontaire, du plus discriminant au plus permissif :
+# - utf-8 en premier : c'est le seul dont l'échec est réellement informatif
+# - utf-16 ensuite : son BOM et ses octets nuls le rendent identifiable
+# - cp1252 AVANT iso-8859-1 : les deux sont identiques sur 0xA0-0xFF (donc sur
+#   tous les accents français), mais cp1252 mappe en plus 0x80-0x9F (apostrophe
+#   typographique, symbole €) là où latin-1 y place des caractères de contrôle.
+#   Les exports comptables Windows (Sage, Cegid, Quadra) sont en cp1252.
+# - iso-8859-1 en dernier : il mappe les 256 octets possibles, il ne peut donc
+#   JAMAIS échouer. C'est le filet de sécurité qui garantit qu'aucun FEC ne
+#   provoquera plus d'UnicodeDecodeError.
+ENCODAGES_TESTES = ["utf-8", "utf-16", "cp1252", "iso-8859-1"]
 SEPARATEURS_TESTES = ["\t", "|", ";"]
+
+# Encodages qui, par construction, acceptent n'importe quelle séquence d'octets.
+# Inutile de les valider par un scan complet du fichier.
+ENCODAGES_INFAILLIBLES = {"iso-8859-1", "latin-1", "latin1"}
+
+# Polars ne décode nativement (Rust, en streaming) que la valeur exacte "utf8".
+# Toute autre valeur — y compris "utf-8" écrit avec un tiret — le fait basculer
+# sur un décodage Python qui charge l'intégralité du fichier en mémoire.
+ENCODAGE_POLARS = {"utf-8": "utf8"}
+
+TAILLE_CHUNK_VALIDATION = 1 << 20  # 1 Mo
+
+
+def _valider_encodage_fichier_complet(chemin: Path, encodage: str) -> bool:
+    """
+    Vérifie qu'un encodage candidat décode l'INTÉGRALITÉ du fichier, et pas
+    seulement sa première ligne.
+
+    Pourquoi c'est indispensable : la ligne d'en-tête d'un FEC est 100 % ASCII
+    ("JournalCode", "JournalLib"...), donc elle se décode sans erreur en UTF-8
+    même quand le corps du fichier est en ISO-8859-1. Sans cette vérification,
+    un FEC latin-1 était déclaré UTF-8, puis plantait plus loin sur la première
+    valeur accentuée (« Créances clients » → octet 0xE9, séquence invalide en
+    UTF-8).
+
+    Lecture par chunks avec un décodeur incrémental : le texte décodé est jeté
+    immédiatement, le coût mémoire reste donc constant même sur un FEC de
+    plusieurs centaines de Mo. L'échec est détecté au premier octet invalide,
+    sans lire la suite du fichier.
+    """
+    if encodage in ENCODAGES_INFAILLIBLES:
+        return True
+
+    decodeur = codecs.getincrementaldecoder(encodage)()
+    try:
+        with open(chemin, "rb") as f:
+            while chunk := f.read(TAILLE_CHUNK_VALIDATION):
+                decodeur.decode(chunk)
+            decodeur.decode(b"", final=True)  # détecte une séquence tronquée en fin de fichier
+    except (UnicodeDecodeError, UnicodeError):
+        return False
+    return True
 
 
 def detecter_format(chemin: Path) -> Tuple[str, str]:
@@ -43,11 +96,17 @@ def detecter_format(chemin: Path) -> Tuple[str, str]:
     - Guillemets autour des en-têtes
     - Espaces parasites
     - Faux positif sur encodage incorrect (par ex. UTF-16 lu en ISO-8859-1)
+    - Fichier dont l'en-tête ASCII passe en UTF-8 mais dont le corps est
+      accentué en ISO-8859-1
 
     Le premier en-tête doit être exactement "JournalCode" (après nettoyage),
     ET il faut retrouver au moins 3 autres en-têtes connus de la norme DGFiP
     parmi les 17 restants. Cette double vérification élimine les faux
     positifs sur fichiers mal encodés.
+
+    Enfin, l'encodage retenu est validé sur l'intégralité du fichier : un
+    en-tête lisible ne suffit pas à conclure (cf.
+    _valider_encodage_fichier_complet).
 
     Returns:
         (encodage, separateur)
@@ -58,11 +117,14 @@ def detecter_format(chemin: Path) -> Tuple[str, str]:
     def _nettoyer(s: str) -> str:
         return s.strip().lstrip(a_nettoyer).rstrip(a_nettoyer).strip()
 
+    entete_reconnu = False
+
     for encodage in ENCODAGES_TESTES:
         try:
             with open(chemin, "r", encoding=encodage) as f:
                 premiere_ligne = f.readline()
 
+            separateur_trouve = None
             for sep in SEPARATEURS_TESTES:
                 colonnes = [_nettoyer(c) for c in premiere_ligne.strip().split(sep)]
 
@@ -82,9 +144,31 @@ def detecter_format(chemin: Path) -> Tuple[str, str]:
                 if connues_trouvees < 3:
                     continue
 
-                return encodage, sep
+                separateur_trouve = sep
+                break
+
+            if separateur_trouve is None:
+                continue
+
+            # L'en-tête est bon, mais il ne prouve rien sur le reste du fichier :
+            # il est en ASCII pur, donc lisible par tous les encodages testés.
+            entete_reconnu = True
+            if not _valider_encodage_fichier_complet(chemin, encodage):
+                continue
+
+            return encodage, separateur_trouve
         except (UnicodeDecodeError, UnicodeError):
             continue
+
+    if entete_reconnu:
+        # Ne devrait pas arriver : iso-8859-1 accepte n'importe quel octet.
+        # Garde-fou explicite plutôt qu'un message trompeur sur les en-têtes.
+        raise ValueError(
+            f"Le fichier {chemin.name} a bien un en-tête FEC valide, mais son "
+            f"contenu n'a pu être décodé avec aucun des encodages testés "
+            f"({', '.join(ENCODAGES_TESTES)}). Le fichier est probablement "
+            f"corrompu ou tronqué. Demandez un nouvel export au client."
+        )
 
     raise ValueError(
         f"Impossible de détecter le format du fichier {chemin.name}. "
@@ -119,7 +203,7 @@ def lire_fec(chemin: str | Path) -> pl.DataFrame:
     df = pl.read_csv(
         chemin,
         separator=separateur,
-        encoding=encodage,
+        encoding=ENCODAGE_POLARS.get(encodage, encodage),
         infer_schema_length=0,  # Tout en string, on convertit nous-mêmes
         truncate_ragged_lines=True,
     )
