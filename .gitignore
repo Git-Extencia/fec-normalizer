@@ -60,3 +60,7 @@ archives/
 .env
 .env.local
 *.secret
+
+# Projets voisins hébergés dans le même dossier parent (ont leur propre repo)
+simulateur-arbitrage/
+MEMO_deploiement_simulateur.md

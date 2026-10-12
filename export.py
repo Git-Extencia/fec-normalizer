@@ -28,6 +28,37 @@ SEUIL_AVERTISSEMENT_EXCEL = 500_000
 # de sécurité en plafonnant à 1 000 000. Au-delà, on découpe en plusieurs feuilles.
 LIMITE_EXCEL_MONOFEUILLE = 1_000_000
 
+
+def _forcer_extension(chemin: Path, ext: str) -> Path:
+    """
+    Garantit que `chemin` se termine par `ext` (ex. ".xlsx"), sans jamais
+    tronquer le nom existant.
+
+    Pourquoi ce helper au lieu de `Path.with_suffix(".xlsx")` :
+    `with_suffix` remplace tout ce qui suit le DERNIER point du nom, ce qui
+    casse les noms de fichiers métier qui contiennent plusieurs points. Cas
+    typique observé en prod : un FEC nommé « FEC 2025 09.07.2026 Sacha.txt »
+    produit un stem égal à « FEC 2025 09.07 » et un suffix de « .2026 Sacha »,
+    donc `with_suffix(".xlsx")` renvoie « FEC 2025 09.07.xlsx ». Résultat :
+    l'export enrichi ET le diagnostic finissent par écraser le même fichier,
+    donc les deux boutons de téléchargement livrent le même contenu.
+
+    Ici on ne touche jamais à l'existant : si l'extension est déjà bonne on
+    laisse le chemin tel quel, sinon on concatène simplement `ext` à la fin.
+
+    Args:
+        chemin: Chemin cible, qui peut déjà contenir des points dans son nom.
+        ext: Extension cible, avec ou sans le point initial (".xlsx" ou "xlsx").
+
+    Returns:
+        Chemin dont le nom se termine par `ext`, sans aucune troncature.
+    """
+    if not ext.startswith("."):
+        ext = "." + ext
+    if chemin.name.lower().endswith(ext.lower()):
+        return chemin
+    return chemin.parent / (chemin.name + ext)
+
 # Taille des tranches quand on découpe par paquets (cas où il n'y a pas de
 # colonne Exercice utilisable pour un découpage métier).
 TAILLE_TRANCHE = 900_000
@@ -64,13 +95,13 @@ def exporter(
         format_force = "xlsx"
 
     if format_force == "xlsx":
-        chemin = chemin.with_suffix(".xlsx")
+        chemin = _forcer_extension(chemin, ".xlsx")
         _exporter_excel(df, chemin)
     elif format_force == "parquet":
-        chemin = chemin.with_suffix(".parquet")
+        chemin = _forcer_extension(chemin, ".parquet")
         df.write_parquet(chemin, compression="snappy")
     elif format_force == "csv":
-        chemin = chemin.with_suffix(".csv")
+        chemin = _forcer_extension(chemin, ".csv")
         df.write_csv(chemin, separator=";")
     else:
         raise ValueError(f"Format inconnu : {format_force}")
@@ -202,7 +233,7 @@ def exporter_rapport_diagnostic(
     Exporte un rapport de diagnostic pour traçabilité audit.
     Liste tous les FEC traités avec leurs caractéristiques.
     """
-    chemin = Path(chemin_sortie).with_suffix(".xlsx")
+    chemin = _forcer_extension(Path(chemin_sortie), ".xlsx")
     df_diag = pl.DataFrame(diagnostics)
 
     wb = Workbook()

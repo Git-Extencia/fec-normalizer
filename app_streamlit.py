@@ -50,7 +50,7 @@ from export import (
 )
 
 
-VERSION = "1.5"
+VERSION = "1.6"
 COLONNES_CRITIQUES = ("CompteNum", "EcritureDate", "Debit", "Credit")
 RACINE_PROJET = Path(__file__).parent
 # Logo blanc adapté au header bleu marine — marque Auditoria (pôle audit
